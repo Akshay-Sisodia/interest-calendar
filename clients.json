@@ -1,0 +1,22 @@
+{
+    "clients": [
+        {
+            "id": 1,
+            "name": "Temp Client 1",
+            "contact": "9445578889",
+            "email": "",
+            "notes": "",
+            "created_at": "2025-03-06 16:19:19",
+            "opening_balance": 10000.0
+        },
+        {
+            "id": 2,
+            "name": "Temp Client 2",
+            "contact": "9445578888",
+            "email": "",
+            "notes": "",
+            "created_at": "2025-03-06 16:20:42",
+            "opening_balance": 5000.0
+        }
+    ]
+}

@@ -1,0 +1,37 @@
+{
+    "transactions": [
+        {
+            "id": 1,
+            "client_id": 1,
+            "date": "2025-03-06",
+            "received": 100.0,
+            "paid": 0.0,
+            "interest_rate": 0.1,
+            "interest_value": 246.0,
+            "interest": 6.83,
+            "notes": ""
+        },
+        {
+            "id": 2,
+            "client_id": 1,
+            "date": "2025-03-06",
+            "received": 0.0,
+            "paid": 50.0,
+            "interest_rate": 0.1,
+            "interest_value": 246.0,
+            "interest": -3.42,
+            "notes": ""
+        },
+        {
+            "id": 3,
+            "client_id": 2,
+            "date": "2025-03-06",
+            "received": 0.0,
+            "paid": 500.0,
+            "interest_rate": 0.1,
+            "interest_value": 246.0,
+            "interest": -34.17,
+            "notes": ""
+        }
+    ]
+}
