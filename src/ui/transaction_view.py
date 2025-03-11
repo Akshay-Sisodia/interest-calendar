@@ -410,15 +410,17 @@ def all_transactions_view(transactions_data, clients_data):
     date_col1, date_col2 = st.columns(2)
     with date_col1:
         start_date = st.date_input(
-            "From Date", 
-            st.session_state.transaction_filters['start_date'],
-            key="all_trans_start_date"
+            "From Date (DD/MM/YYYY)",  # Include format in the label itself
+            value=st.session_state.transaction_filters['start_date'],
+            key="all_trans_start_date",
+            format="DD/MM/YYYY"  # Keep the format specification
         )
     with date_col2:
         end_date = st.date_input(
-            "To Date", 
-            st.session_state.transaction_filters['end_date'],
-            key="all_trans_end_date"
+            "To Date (DD/MM/YYYY)",  # Include format in the label itself
+            value=st.session_state.transaction_filters['end_date'],
+            key="all_trans_end_date",
+            format="DD/MM/YYYY"  # Keep the format specification
         )
     
     # Add apply and reset filter buttons
