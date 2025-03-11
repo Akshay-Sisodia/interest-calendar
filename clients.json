@@ -2,21 +2,51 @@
     "clients": [
         {
             "id": 1,
-            "name": "Temp Client 1",
-            "contact": "9445578889",
+            "name": "Test Client 1",
+            "contact": "",
             "email": "",
             "notes": "",
-            "created_at": "2025-03-06 16:19:19",
-            "opening_balance": 10000.0
+            "created_at": "2025-03-11 13:04:05",
+            "opening_balance": 100.0,
+            "opening_balance_details": {
+                "date": "2025-03-11",
+                "interest_rate": 5.0,
+                "calendar_type": "Diwali",
+                "days": 228,
+                "interest": 3.17
+            }
         },
         {
             "id": 2,
-            "name": "Temp Client 2",
-            "contact": "9445578888",
+            "name": "Test Client 2 ",
+            "contact": "",
             "email": "",
             "notes": "",
-            "created_at": "2025-03-06 16:20:42",
-            "opening_balance": 5000.0
+            "created_at": "2025-03-11 15:24:12",
+            "opening_balance": 2323.0,
+            "opening_balance_details": {
+                "date": "2025-03-11",
+                "interest_rate": 5.0,
+                "calendar_type": "Financial",
+                "days": 21,
+                "interest": 6.66
+            }
+        },
+        {
+            "id": 3,
+            "name": "Test Client 3 ",
+            "contact": "",
+            "email": "",
+            "notes": "",
+            "created_at": "2025-03-11 16:04:19",
+            "opening_balance": 0.0,
+            "opening_balance_details": {
+                "date": "2025-03-11",
+                "interest_rate": 5.0,
+                "calendar_type": "Diwali",
+                "days": 0,
+                "interest": 0
+            }
         }
     ]
 }
