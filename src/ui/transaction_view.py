@@ -12,6 +12,81 @@ from ..services.interest_service import InterestService
 from ..data.data_loader import save_transactions
 from ..utils.helpers import sanitize_html, num_to_words_rupees, render_html_safely  # Import the new function
 
+def apply_tab_styling():
+    """Apply enhanced tab styling to Streamlit tabs."""
+    st.markdown("""
+    <style>
+    /* Fix for duplicate highlight bars - explicitly target and hide all */
+    .stTabs [data-baseweb="tab-highlight"] {
+        display: none !important;
+    }
+    
+    /* Add a custom border-bottom to the selected tab to replace the highlight */
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: rgba(45, 45, 60, 0.7) !important;
+        color: #ffffff !important;
+        font-weight: 700 !important; /* Increased weight for selected tab */
+        border-bottom: 3px solid #4b6bfb !important; /* Blue highlight */
+        box-shadow: 0 -10px 20px rgba(75, 107, 251, 0.1) !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    /* Style for all tabs to make them more visible */
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 20px !important;
+        border-radius: 5px 5px 0 0 !important;
+        margin-right: 5px !important;
+        border: 1px solid rgba(75, 75, 90, 0.2) !important;
+        border-bottom: none !important;
+        background-color: rgba(25, 25, 35, 0.4) !important;
+        transition: all 0.2s ease !important;
+        font-weight: 600 !important; /* Make all tab text bold */
+        font-size: 1.05rem !important; /* Slightly larger font size */
+    }
+    
+    /* More specific rules for the tab text to ensure it's bold */
+    .stTabs [data-baseweb="tab"] div[data-testid="stMarkdownContainer"] p,
+    .stTabs [data-baseweb="tab"] div,
+    .stTabs [data-baseweb="tab"] span {
+        font-weight: 700 !important; /* Definitely bold */
+        font-family: 'Geist Mono', monospace !important; /* Consistent font */
+    }
+    
+    /* Explicitly target the text elements inside tabs */
+    .stTabs button[role="tab"] span,
+    .stTabs button[role="tab"] p {
+        font-weight: 800 !important; /* Extra bold */
+        letter-spacing: 0.02em !important; /* Slightly increase letter spacing */
+    }
+    
+    /* Hover effect for tabs */
+    .stTabs [data-baseweb="tab"]:hover:not([aria-selected="true"]) {
+        background-color: rgba(35, 35, 50, 0.6) !important;
+        color: #e0e0e0 !important;
+        border-bottom: 1px solid rgba(75, 107, 251, 0.3) !important;
+    }
+    
+    /* Ensure no extra borders around tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        border-bottom: 1px solid #333340 !important;
+        padding-bottom: 0 !important;
+        margin-bottom: 20px !important;
+    }
+    
+    /* Add a subtle glow to active tab */
+    .stTabs [data-baseweb="tab"][aria-selected="true"]::after {
+        content: "";
+        position: absolute;
+        bottom: -3px;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, rgba(75, 107, 251, 0.3), rgba(75, 107, 251, 0.8), rgba(75, 107, 251, 0.3));
+        border-radius: 3px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 def get_amount_in_words(row):
     """
     Convert transaction amount to words.
@@ -88,28 +163,8 @@ def transactions_section(transactions_data, clients_data, interest_calendars, in
     if st.session_state.active_tab == "add_transaction":
         tab_index = 0  # Set to first tab (Add Transaction)
     
-    # Add custom CSS to ensure consistent tab styling
-    st.markdown("""
-    <style>
-    /* Fix for duplicate highlight bars - explicitly target and hide all */
-    .stTabs [data-baseweb="tab-highlight"] {
-        display: none !important;
-    }
-    
-    /* Add a custom border-bottom to the selected tab to replace the highlight */
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background-color: rgba(35, 35, 35, 0.1) !important;
-        color: #e0e0e0 !important;
-        font-weight: 600 !important;
-        border-bottom: 3px solid #6e7681 !important; /* gray-40 color */
-    }
-    
-    /* Ensure no extra borders around tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        border-bottom: none !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # Apply enhanced tab styling
+    apply_tab_styling()
     
     # Create tabs for different transaction functions - rearranged order
     tab1, tab2 = st.tabs(["📋 All Transactions", "✏️ Add Transaction"])

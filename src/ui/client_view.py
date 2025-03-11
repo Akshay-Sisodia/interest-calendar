@@ -7,6 +7,7 @@ from ..data.data_loader import save_clients, save_transactions
 from ..services.interest_service import InterestService
 from ..utils.helpers import sanitize_html, num_to_words_rupees
 from datetime import datetime
+from ..ui.transaction_view import apply_tab_styling
 
 def client_management(clients_data, transactions_data, interest_calendars=None):
     """Client management UI component."""
@@ -35,6 +36,7 @@ def client_management(clients_data, transactions_data, interest_calendars=None):
     """, unsafe_allow_html=True)
     
     # Create tabs for different client functions
+    apply_tab_styling()
     tab1, tab2 = st.tabs(["📋 Client List", "✏️ Add New Client"])
     
     # Initialize interest service if calendars are provided
