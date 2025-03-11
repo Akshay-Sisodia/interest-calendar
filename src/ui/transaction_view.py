@@ -617,164 +617,47 @@ def all_transactions_view(transactions_data, clients_data):
         st.warning("No transactions match the selected filters.")
         return
     
-    # Display transactions in a tabbed view - List and Table
-    view_tab1, view_tab2 = st.tabs(["Card View", "Table View"])
+    # Display transactions in table view
+    # Custom CSS for table styling
+    st.markdown("""
+    <style>
+    /* Transaction table specific styling */
+    div[data-testid="stDataFrame"] table {
+        font-family: 'Geist Mono', monospace !important;
+        font-size: 1.2rem !important;
+    }
     
-    with view_tab1:
-        # Display transactions as elegant cards with an enigmatic black theme
-        for i, row in filtered_df.iterrows():
-            transaction_type = "Received" if row["received"] > 0 else "Paid"
-            amount = row["received"] if row["received"] > 0 else row["paid"]
-            
-            # Define colors based on transaction type - using more enigmatic colors
-            glow_color = "#38ff8c" if transaction_type == "Received" else "#ff5f5f"
-            text_color = "#f1f1f1"
-            bg_color = "#0a0a10"
-            heading_color = "#ffffff"
-            label_color = "#707080"
-            
-            # Format date nicely
-            formatted_date = row['date'].strftime('%d %b %Y')
-            
-            # Create a completely custom HTML card with dark enigmatic styling
-            card_html = f"""
-            <div style="position: relative; 
-                        background-color: {bg_color}; 
-                        border-radius: 10px; 
-                        padding: 20px 22px; 
-                        margin-bottom: 20px; 
-                        box-shadow: 0 4px 16px rgba(0,0,0,0.4),
-                                   0 0 0 1px rgba(30,30,35,0.9);
-                        overflow: hidden;
-                        font-family: 'Geist Mono', monospace;">
-                <div style="position: absolute;
-                            left: 0;
-                            top: 0;
-                            bottom: 0;
-                            width: 4px;
-                            background: linear-gradient(to bottom, {glow_color}bb, {glow_color}00);
-                            box-shadow: 0 0 15px {glow_color}66;">
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px;">
-                    <div>
-                        <h3 style="margin: 0; color: {heading_color}; font-size: 1.5rem; font-weight: 600;">{str(row['client_name']).replace('<', '&lt;').replace('>', '&gt;')}</h3>
-                        <div style="margin-top: 8px; display: flex; align-items: center;">
-                            <span style="background: {glow_color}22; 
-                                 color: {glow_color}; 
-                                 padding: 3px 10px; 
-                                 border-radius: 20px;
-                                 font-size: 0.85rem;
-                                 border: 1px solid {glow_color}44;
-                                 font-weight: 500;">
-                                {transaction_type}
-                            </span>
-                            <span style="color: {label_color}; margin-left: 12px; font-size: 0.9rem;">{formatted_date}</span>
-                        </div>
-                    </div>
-                    <div style="text-align: right; min-width: 220px;">
-                        <h2 style="color: {glow_color}; margin: 0; font-size: 1.7rem; font-weight: 600; text-align: right;">₹{amount:,.2f}</h2>
-                        <p style="color: {label_color}; margin: 3px 0 0 0; font-size: 0.92rem; font-style: italic; line-height: 1.4; text-align: right; opacity: 0.95;">
-                            {str(row.get('amount_in_words', num_to_words_rupees(amount))).replace('<', '&lt;').replace('>', '&gt;')}
-                        </p>
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 15px; margin-bottom: 5px;">
-                    <div>
-                        <div style="margin-bottom: 12px;">
-                            <div style="color: {label_color}; font-size: 0.85rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Calendar</div>
-                            <div style="color: {text_color}; font-weight: 500;">{str(row['calendar_type']).replace('<', '&lt;').replace('>', '&gt;')}</div>
-                        </div>
-                    </div>
-                    <div>
-                        <div style="margin-bottom: 12px;">
-                            <div style="color: {label_color}; font-size: 0.85rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Interest Rate</div>
-                            <div style="color: {text_color}; font-weight: 500;">{row['interest_rate']}%</div>
-                        </div>
-                        <div style="margin-bottom: 12px;">
-                            <div style="color: {label_color}; font-size: 0.85rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Days</div>
-                            <div style="color: {text_color}; font-weight: 500;">{row['days']}</div>
-                        </div>
-                    </div>
-                    <div>
-                        <div style="margin-bottom: 12px;">
-                            <div style="color: {label_color}; font-size: 0.85rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Interest</div>
-                            <div style="color: {glow_color}; font-weight: 500;">₹{row['interest']:,.2f}</div>
-                        </div>
-                        <div style="margin-bottom: 12px;">
-                            <div style="color: {label_color}; font-size: 0.85rem; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">ID</div>
-                            <div style="color: {text_color}; font-weight: 500;">{row.get('id', i+1)}</div>
-                        </div>
-                    </div>
-                </div>
-            """
-            
-            # Add notes section (always include it, but hide if empty)
-            notes_content = str(row.get("notes", "")).strip()
-            if notes_content:
-                card_html += f"""
-                <div style="background-color: #13131a; border-radius: 8px; padding: 12px 15px; margin-top: 8px; margin-bottom: 10px; border: 1px solid #1f1f25;">
-                    <div style="color: {label_color}; font-size: 0.85rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Notes</div>
-                    <div style="color: {text_color}; font-size: 0.95rem; line-height: 1.4;">
-                        {notes_content}
-                    </div>
-                </div>
-                """
-            
-            # Close the main div
-            card_html += """
-            </div>
-            <style>
-            @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&display=swap');
-            </style>
-            """
-            
-            # Use components.html instead of markdown for proper rendering
-            # Set a minimum height to ensure notes are visible
-            min_height = 300 if notes_content else 250
-            components.html(card_html, height=min_height, scrolling=False)
+    div[data-testid="stDataFrame"] th,
+    div[data-testid="stDataFrame"] td {
+        font-family: 'Geist Mono', monospace !important;
+        font-size: 1.2rem !important;
+        padding: 12px 16px !important;
+        line-height: 1.4 !important;
+    }
     
-    with view_tab2:
-        # Custom CSS for table styling
-        st.markdown("""
-        <style>
-        /* Transaction table specific styling */
-        div[data-testid="stDataFrame"] table {
-            font-family: 'Geist Mono', monospace !important;
-            font-size: 1.2rem !important;
-        }
-        
-        div[data-testid="stDataFrame"] th,
-        div[data-testid="stDataFrame"] td {
-            font-family: 'Geist Mono', monospace !important;
-            font-size: 1.2rem !important;
-            padding: 12px 16px !important;
-            line-height: 1.4 !important;
-        }
-        
-        /* Force CSS for table cells */
-        .cell-text-container {
-            font-family: 'Geist Mono', monospace !important;
-            font-size: 1.2rem !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        # Display as a table
-        st.dataframe(
-            filtered_df,
-            column_config={
-                "client_name": "Client",
-                "date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
-                "received": st.column_config.NumberColumn("Received", format="₹%.2f"),
-                "paid": st.column_config.NumberColumn("Paid", format="₹%.2f"),
-                "amount_in_words": "Amount in Words",
-                "interest_rate": st.column_config.NumberColumn("Interest Rate", format="%.2f%%"),
-                "calendar_type": "Calendar Type",
-                "days": "Days",
-                "interest": st.column_config.NumberColumn("Interest", format="₹%.2f"),
-                "notes": "Notes"
-            },
-            hide_index=True,
-            use_container_width=True
-        )
+    /* Force CSS for table cells */
+    .cell-text-container {
+        font-family: 'Geist Mono', monospace !important;
+        font-size: 1.2rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Display as a table
+    st.dataframe(
+        filtered_df,
+        column_config={
+            "client_name": "Client",
+            "date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
+            "received": st.column_config.NumberColumn("Received", format="₹%.2f"),
+            "paid": st.column_config.NumberColumn("Paid", format="₹%.2f"),
+            "amount_in_words": "Amount in Words",
+            "interest_rate": st.column_config.NumberColumn("Interest Rate", format="%.2f%%"),
+            "calendar_type": "Calendar Type",
+            "days": "Days",
+            "interest": st.column_config.NumberColumn("Interest", format="₹%.2f"),
+            "notes": "Notes"
+        },
+        hide_index=True,
+        use_container_width=True
+    )
