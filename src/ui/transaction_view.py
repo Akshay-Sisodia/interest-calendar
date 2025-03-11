@@ -77,16 +77,16 @@ def transactions_section(transactions_data, clients_data, interest_calendars, in
     
     # Initialize transaction tab session state if not already set
     if 'active_tab' not in st.session_state:
-        st.session_state.active_tab = "add_transaction"  # Default to add transaction tab
+        st.session_state.active_tab = "all_transactions"  # Default to all transactions tab
     
     # If coming from client view, switch to all transactions tab
     if st.session_state.get("view_client_transactions") is not None:
         st.session_state.active_tab = "all_transactions"
     
     # Determine which tab should be active
-    tab_index = 0  # Default to first tab (Add Transaction)
-    if st.session_state.active_tab == "all_transactions":
-        tab_index = 1  # Set to second tab (All Transactions)
+    tab_index = 1  # Default to second tab (All Transactions)
+    if st.session_state.active_tab == "add_transaction":
+        tab_index = 0  # Set to first tab (Add Transaction)
     
     # Add custom CSS to ensure consistent tab styling
     st.markdown("""
@@ -111,24 +111,24 @@ def transactions_section(transactions_data, clients_data, interest_calendars, in
     </style>
     """, unsafe_allow_html=True)
     
-    # Create tabs for different transaction functions
-    tab1, tab2 = st.tabs(["✏️ Add Transaction", "📋 All Transactions"])
+    # Create tabs for different transaction functions - rearranged order
+    tab1, tab2 = st.tabs(["📋 All Transactions", "✏️ Add Transaction"])
     
     # Reset the transaction tab selection after this run
     current_tab = st.session_state.active_tab
-    st.session_state.active_tab = "add_transaction"  # Reset to default for next time
+    st.session_state.active_tab = "all_transactions"  # Reset to default for next time
     
     # Show the appropriate tab content based on selection
     if tab_index == 0:
         with tab1:
-            transaction_management(transactions_data, clients_data, interest_service)
-        with tab2:
             all_transactions_view(transactions_data, clients_data)
+        with tab2:
+            transaction_management(transactions_data, clients_data, interest_service)
     else:
         with tab2:
-            all_transactions_view(transactions_data, clients_data)
-        with tab1:
             transaction_management(transactions_data, clients_data, interest_service)
+        with tab1:
+            all_transactions_view(transactions_data, clients_data)
 
 def transaction_management(transactions_data, clients_data, interest_service):
     """UI component for adding new transactions."""
@@ -347,7 +347,12 @@ def all_transactions_view(transactions_data, clients_data):
         client_name_to_filter = client_map[view_client_id]
         # Display which client we're filtering for
         st.info(f"Showing transactions for client: {client_name_to_filter}")
-        # Clear the filter once used
+        
+        # Automatically apply the filter by updating session state
+        st.session_state.transaction_filters['client_filter'] = [client_name_to_filter]
+        st.session_state.transaction_filters['filters_applied'] = True
+        
+        # Clear the filter trigger once used
         st.session_state.view_client_transactions = None
     
     # Place all non-date filters on a single line (5 columns)
@@ -358,7 +363,7 @@ def all_transactions_view(transactions_data, clients_data):
         client_filter = st.multiselect(
             "Client", 
             options=sorted(df["client_name"].unique()),
-            default=[client_name_to_filter] if client_name_to_filter else st.session_state.transaction_filters['client_filter'],
+            default=st.session_state.transaction_filters['client_filter'],
             placeholder="All Clients",
             key="client_filter_select"
         )
