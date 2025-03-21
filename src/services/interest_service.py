@@ -63,9 +63,9 @@ class InterestService:
         """Calculate interest based on amount, rate, days and calendar type."""
         # Formula: (amount * rate * days) / (shadow value on first day of year)
         # For Diwali calendar, the first day shadow value is 360
-        # For Financial calendar, the first day shadow value is 366 (or 365 for non-leap years)
+        # For Financial calendar, the first day shadow value is 365
         if calendar_type == "Financial":
-            first_day_value = 366  # First day value for Financial calendar
+            first_day_value = 365  # First day value for Financial calendar
         else:  # Diwali
             first_day_value = 360  # First day value for Diwali calendar
         

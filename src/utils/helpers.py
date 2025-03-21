@@ -691,7 +691,7 @@ def calculate_interest(amount, rate, days, calendar_type="Diwali"):
     (amount * rate * days) / (shadow value on first day of year)
     
     For Diwali calendar, the first day shadow value is 360
-    For Financial calendar, the first day shadow value is 366 (or 365 for non-leap years)
+    For Financial calendar, the first day shadow value is 365 (or 365 for non-leap years)
     """
     if calendar_type == "Diwali":
         base_value = 360
@@ -699,7 +699,7 @@ def calculate_interest(amount, rate, days, calendar_type="Diwali"):
         # Check if it's a leap year
         current_year = datetime.now().year
         if (current_year % 4 == 0 and current_year % 100 != 0) or (current_year % 400 == 0):
-            base_value = 366
+            base_value = 365
         else:
             base_value = 365
     

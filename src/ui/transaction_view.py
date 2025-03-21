@@ -117,30 +117,33 @@ def sanitize_notes(notes):
     
     Args:
         notes: The notes text to prepare for HTML display
-        
-    Returns:
-        str: Notes text properly prepared for HTML display
     """
     if not notes:
         return ""
-        
-    # Convert to string if not already
-    notes_text = str(notes).strip()
     
-    # Check if the content already contains HTML
-    if notes_text.startswith('<div') or notes_text.startswith('<p') or '<div' in notes_text or '<span' in notes_text:
-        # If it already has HTML, return it directly for rendering
-        return notes_text
-    else:
-        # If it's just plain text, format it nicely
-        try:
-            formatted_text = sanitize_html(notes_text, is_html=False)
-            return f"""<div style="color: #e0e0e0; background-color: rgba(30, 30, 40, 0.5); padding: 8px; border-radius: 4px; white-space: pre-wrap;">{formatted_text}</div>"""
-        except (ImportError, AttributeError):
-            # Fallback
-            notes_text = notes_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            notes_text = notes_text.replace('\n', '<br>')
-            return f"""<div style="color: #e0e0e0; background-color: rgba(30, 30, 40, 0.5); padding: 8px; border-radius: 4px; white-space: pre-wrap;">{notes_text}</div>"""
+    # Sanitize the notes to prevent HTML injection
+    sanitized_notes = sanitize_html(notes)
+    
+    # Format as HTML
+    return f"""
+    <div style="margin-top: 10px;">
+        <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Notes</p>
+        <p style="color: #e0e0e0; margin-top: 0;">{sanitized_notes}</p>
+    </div>
+    """
+
+def field_exists(transaction, field):
+    """
+    Check if a field exists and has a non-empty value in the transaction
+    
+    Args:
+        transaction: The transaction object
+        field: The field name to check
+        
+    Returns:
+        bool: True if the field exists and has a value, False otherwise
+    """
+    return field in transaction and transaction[field]
 
 def transactions_section(transactions_data, clients_data, interest_calendars, interest_service):
     """Transaction management UI component."""
@@ -213,13 +216,25 @@ def transaction_management(transactions_data, clients_data, interest_service):
         st.warning("⚠️ No clients available. Please add a client first in the Clients section.")
         return
     
-    # Initialize session state for transaction form
-    if 'transaction_amount' not in st.session_state:
-        st.session_state.transaction_amount = 0.0
+    # Handle form reset if needed
+    if 'reset_transaction_form' not in st.session_state:
+        st.session_state.reset_transaction_form = False
+    
+    # If reset flag is set, clear all form-related session state values
+    if st.session_state.reset_transaction_form:
+        if 'transaction_client_select' in st.session_state:
+            del st.session_state.transaction_client_select
+        if 'new_transaction_date' in st.session_state:
+            del st.session_state.new_transaction_date
+        if 'new_transaction_notes' in st.session_state:
+            del st.session_state.new_transaction_notes
+        
+        # Reset the flag
+        st.session_state.reset_transaction_form = False
+    
+    # Initialize other session state variables (removing show_confirmation since we skip preview)
     if 'amount_in_words' not in st.session_state:
         st.session_state.amount_in_words = ""
-    if 'show_confirmation' not in st.session_state:
-        st.session_state.show_confirmation = False
     if 'transaction_data' not in st.session_state:
         st.session_state.transaction_data = {}
     
@@ -299,34 +314,29 @@ def transaction_management(transactions_data, clients_data, interest_service):
                 help="Optional notes about this transaction"
             )
         
-        # Preview button - this is the only place where we can have a callback
-        preview_button = st.form_submit_button(
-            "Preview Transaction", 
-            use_container_width=True
+        # Submit button - renamed from Preview to Add
+        submit_button = st.form_submit_button(
+            "Add Transaction", 
+            use_container_width=True,
+            type="primary"
         )
     
-    # If preview button is clicked, show confirmation
-    if preview_button:
-        # Store the current amount in session state to show confirmation
-        if amount > 0:
-            st.session_state.amount_in_words = num_to_words_rupees(amount)
-            st.session_state.show_confirmation = True
-        else:
+    # If submit button is clicked, add the transaction directly
+    if submit_button:
+        # Validate amount
+        if amount <= 0:
             st.error("❌ Amount must be greater than zero.")
-            st.session_state.show_confirmation = False
             return
             
-        # Calculate everything for preview
+        # Calculate everything for the transaction
         date_str = new_date.strftime("%Y-%m-%d")
         diwali_days, financial_days = interest_service.get_interest_value(date_str)
         
         if calendar_type == "Diwali" and diwali_days is None:
             st.error("❌ No Diwali calendar days value available for the selected date. Transaction not added.")
-            st.session_state.show_confirmation = False
             return
         elif calendar_type == "Financial" and financial_days is None:
             st.error("❌ No Financial calendar days value available for the selected date. Transaction not added.")
-            st.session_state.show_confirmation = False
             return
         
         # Calculate interest
@@ -350,7 +360,7 @@ def transaction_management(transactions_data, clients_data, interest_service):
             if client["name"] == selected_client
         )
         
-        # Create transaction object for preview
+        # Create transaction object
         transaction_data = {
             "id": len(transactions_data.get("transactions", [])) + 1,
             "client_id": client_id,
@@ -366,54 +376,35 @@ def transaction_management(transactions_data, clients_data, interest_service):
             "notes": notes,
         }
         
-        st.session_state.transaction_data = transaction_data
+        # Initialize transactions list if needed
+        if "transactions" not in transactions_data:
+            transactions_data["transactions"] = []
         
-        # Display confirmation dialog
-        display_transaction_preview(transaction_data, selected_client, st.session_state.show_confirmation)
-    
-    # Only show confirmation buttons if we're in confirmation mode
-    if st.session_state.show_confirmation:
-        # Confirmation buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Cancel", use_container_width=True):
-                st.session_state.show_confirmation = False
-                st.rerun()
-                
-        with col2:
-            if st.button("Confirm & Add Transaction", type="primary", use_container_width=True):
-                # Initialize transactions list if needed
-                if "transactions" not in transactions_data:
-                    transactions_data["transactions"] = []
-                
-                # Add and save transaction
-                transactions_data["transactions"].append(st.session_state.transaction_data)
-                save_transactions(transactions_data)
-                
-                # Show success message with details
-                st.success(f"""
-                ✅ Transaction added successfully!
-                
-                **Details:**
-                - Client: {st.session_state.transaction_data['client_name']}
-                - Type: {"Received" if st.session_state.transaction_data['received'] > 0 else "Paid"}
-                - Amount: ₹{max(st.session_state.transaction_data['received'], st.session_state.transaction_data['paid']):,.2f}
-                - Interest: ₹{abs(st.session_state.transaction_data['interest']):,.2f}
-                - Calendar: {st.session_state.transaction_data['calendar_type']} ({st.session_state.transaction_data['days']} days)
-                """)
-                
-                # Clear the confirmation state to allow new transactions
-                st.session_state.show_confirmation = False
-                
-                # Reset amount in session state
-                st.session_state.transaction_amount = 0.0
-                
-                # Set session state to control what happens next
-                st.session_state.transaction_added = True
-                st.session_state.last_action = "add_another"
-                
-                # Refresh the page to clear the form
-                st.rerun()
+        # Add and save transaction
+        transactions_data["transactions"].append(transaction_data)
+        save_transactions(transactions_data)
+        
+        # Show success message with details
+        st.success(f"""
+        ✅ Transaction added successfully!
+        
+        **Details:**
+        - Client: {selected_client}
+        - Type: {transaction_type}
+        - Amount: ₹{amount:,.2f}
+        - Interest: ₹{abs(interest):,.2f}
+        - Calendar: {calendar_type} ({int(days_value)} days)
+        """)
+        
+        # Reset form for next transaction
+        st.session_state.reset_transaction_form = True
+        
+        # Set session state to control what happens next
+        st.session_state.transaction_added = True
+        st.session_state.last_action = "add_another"
+        
+        # Refresh the page to clear the form
+        st.rerun()
 
 def edit_transaction_view(transactions_data, clients_data, interest_service):
     """UI component for editing existing transactions."""
@@ -822,7 +813,20 @@ def all_transactions_view(transactions_data, clients_data):
             (filtered_df["date"].dt.date <= end_date)
         ]
     
-    # Sort by date descending (most recent first)
+    # Sort by date (oldest first) to calculate running balance properly
+    filtered_df = filtered_df.sort_values("date", ascending=True)
+    
+    # Calculate net amount for each transaction (received - paid)
+    filtered_df["net_amount"] = filtered_df["received"] - filtered_df["paid"]
+    
+    # Calculate running balance for each transaction
+    filtered_df["running_balance"] = filtered_df["net_amount"].cumsum()
+    
+    # Add opening and closing balance for each transaction
+    filtered_df["opening_balance"] = filtered_df["running_balance"] - filtered_df["net_amount"]
+    filtered_df["closing_balance"] = filtered_df["running_balance"]
+    
+    # Sort by date descending (most recent first) for display
     filtered_df = filtered_df.sort_values("date", ascending=False)
     
     # Ensure amount_in_words is present for all transactions (for backwards compatibility)
@@ -830,12 +834,14 @@ def all_transactions_view(transactions_data, clients_data):
         # Use the helper function to calculate amount in words for each transaction
         filtered_df['amount_in_words'] = filtered_df.apply(get_amount_in_words, axis=1)
     
-    # Reorder columns to show client name first
+    # Reorder columns to show client name, date, and balance columns
     cols = [
         "client_name",
         "date",
+        "opening_balance",
         "received",
         "paid",
+        "closing_balance",
         "amount_in_words",
         "interest_rate",
         "calendar_type",
@@ -850,6 +856,7 @@ def all_transactions_view(transactions_data, clients_data):
     total_received = filtered_df["received"].sum()
     total_paid = filtered_df["paid"].sum()
     total_interest = filtered_df["interest"].sum()
+    final_balance = filtered_df["closing_balance"].iloc[0] if not filtered_df.empty else 0
     
     # Show transaction summary
     st.markdown(f"""
@@ -869,6 +876,10 @@ def all_transactions_view(transactions_data, clients_data):
         <div>
             <p style="margin:0; font-size:0.9rem; color:#a0a0a0;">Total Interest</p>
             <p style="margin:0; font-weight:bold; color:#4b6bfb;">₹{total_interest:,.2f}</p>
+        </div>
+        <div>
+            <p style="margin:0; font-size:0.9rem; color:#a0a0a0;">Current Balance</p>
+            <p style="margin:0; font-weight:bold; color:{('#4ade80' if final_balance >= 0 else '#f87171')};">₹{final_balance:,.2f}</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -905,6 +916,14 @@ def all_transactions_view(transactions_data, clients_data):
             export_df = filtered_df.copy()
         else:  # All Transactions
             export_df = df.copy()
+            # Calculate running balance for all transactions
+            export_df["net_amount"] = export_df["received"] - export_df["paid"]
+            export_df = export_df.sort_values("date", ascending=True)
+            export_df["running_balance"] = export_df["net_amount"].cumsum()
+            export_df["opening_balance"] = export_df["running_balance"] - export_df["net_amount"]
+            export_df["closing_balance"] = export_df["running_balance"]
+            export_df = export_df.sort_values("date", ascending=False)
+            
             # Apply the amount_in_words logic to all transactions too
             if 'amount_in_words' not in export_df.columns:
                 # Use the shared helper function 
@@ -973,8 +992,10 @@ def all_transactions_view(transactions_data, clients_data):
         column_config={
             "client_name": "Client",
             "date": st.column_config.DateColumn("Date", format="DD MMM YYYY"),
+            "opening_balance": st.column_config.NumberColumn("Opening Balance", format="₹%.2f"),
             "received": st.column_config.NumberColumn("Received", format="₹%.2f"),
             "paid": st.column_config.NumberColumn("Paid", format="₹%.2f"),
+            "closing_balance": st.column_config.NumberColumn("Closing Balance", format="₹%.2f"),
             "amount_in_words": "Amount in Words",
             "interest_rate": st.column_config.NumberColumn("Interest Rate", format="%.2f%%"),
             "calendar_type": "Calendar Type",
@@ -986,82 +1007,6 @@ def all_transactions_view(transactions_data, clients_data):
         use_container_width=True
     )
 
-def display_transaction_preview(transaction, client_name, confirmation=False):
-    """Display a transaction preview with styled HTML."""
-    # Title for the preview
-    st.markdown(
-        "### Transaction Preview" if not confirmation else "### Confirm Transaction Details",
-        unsafe_allow_html=True
-    )
-    
-    # Create the styled HTML preview
-    html_preview = f"""
-    <div style="background-color:#121212; padding:1.5rem; border-radius:0.5rem; margin-bottom:1rem;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Client</p>
-                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{client_name}</p>
-            </div>
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Date</p>
-                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction['date']}</p>
-            </div>
-        </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Transaction Type</p>
-                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{"Received" if transaction.get('received', 0) > 0 else "Paid"}</p>
-            </div>
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Amount</p>
-                <p style="color: {"#4ade80" if transaction.get('received', 0) > 0 else "#f87171"}; font-weight: 500; margin-top: 0;">₹{transaction.get('received', 0) if transaction.get('received', 0) > 0 else transaction.get('paid', 0):,.2f}</p>
-            </div>
-        </div>
-        
-        {f'''
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Interest Rate</p>
-                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('interest_rate', 0)}%</p>
-            </div>
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Calendar</p>
-                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('calendar_type', 'N/A')}</p>
-            </div>
-        </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Days</p>
-                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('days', 'N/A')}</p>
-            </div>
-            <div>
-                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Interest</p>
-                <p style="color: #4b6bfb; font-weight: 500; margin-top: 0;">₹{transaction.get('interest', 0):,.2f}</p>
-            </div>
-        </div>
-        ''' if transaction.get('interest') is not None else ''}
-        
-        {f'''
-        <div style="margin-top: 10px;">
-            <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Notes</p>
-            <p style="color: #e0e0e0; margin-top: 0;">{transaction.get('notes', 'No notes')}</p>
-        </div>
-        ''' if transaction.get('notes') else ''}
-        
-        {f'''
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a2a;">
-            <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Amount in Words</p>
-            <p style="color: #e0e0e0; margin-top: 0; font-style: italic;">{transaction.get('amount_in_words', '')}</p>
-        </div>
-        ''' if transaction.get('amount_in_words') else ''}
-    </div>
-    """
-    
-    # Render the HTML with unsafe_allow_html=True
-    st.markdown(html_preview, unsafe_allow_html=True)
-
 def confirm_transaction_screen(client_name, transaction_data, back_callback=None):
     """Display the transaction confirmation screen."""
     colored_header(
@@ -1070,15 +1015,16 @@ def confirm_transaction_screen(client_name, transaction_data, back_callback=None
         color_name="gray-40"
     )
     
-    # Display transaction preview
-    display_transaction_preview(transaction_data, client_name, confirmation=True)
+    # Display transaction details instead of preview
+    display_transaction_details(transaction_data, client_name)
     
     # Add a confirmation message with warning styling
-    st.markdown("""
+    warning_html = """
     <div style="background-color:#121212; padding:1rem; border-radius:0.5rem; border-left:4px solid #f59e0b; margin-bottom:1rem;">
         <p style="margin:0; color:#e0e0e0; font-weight:500;">⚠️ Please review the transaction details carefully before confirming.</p>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(render_html_safely(warning_html), unsafe_allow_html=True)
     
     # Create buttons for back and confirm
     col1, col2 = st.columns(2)
@@ -1102,11 +1048,12 @@ def transaction_receipt(transaction, client_name):
     )
     
     # Success message
-    st.markdown("""
+    success_html = """
     <div style="background-color:#052e16; padding:1rem; border-radius:0.5rem; border-left:4px solid #10b981; margin-bottom:1.5rem;">
         <p style="margin:0; color:#d1fae5; font-weight:500;">✅ Transaction has been successfully recorded.</p>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(render_html_safely(success_html), unsafe_allow_html=True)
     
     # Print receipt button
     if st.button("Print Receipt", use_container_width=True):
@@ -1196,7 +1143,7 @@ def transaction_receipt(transaction, client_name):
     </div>
     """
     
-    st.markdown(receipt_html, unsafe_allow_html=True)
+    st.markdown(render_html_safely(receipt_html), unsafe_allow_html=True)
     
     # Add buttons for navigation
     col1, col2 = st.columns(2)
@@ -1285,4 +1232,4 @@ def display_transaction_details(transaction, client_name):
     </div>
     """
     
-    st.markdown(transaction_html, unsafe_allow_html=True)
+    st.markdown(render_html_safely(transaction_html), unsafe_allow_html=True)

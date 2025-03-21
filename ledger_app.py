@@ -221,9 +221,9 @@ def get_interest_value(date_str, interest_calendars):
 def calculate_interest(amount, rate, days, calendar_type="Diwali"):
     # Formula: (amount * rate * days) / (shadow value on first day of year)
     # For Diwali calendar, the first day shadow value is 360
-    # For Financial calendar, the first day shadow value is 366 (or 365 for non-leap years)
+    # For Financial calendar, the first day shadow value is 365
     if calendar_type == "Financial":
-        first_day_value = 366  # First day value for Financial calendar
+        first_day_value = 365  # First day value for Financial calendar
     else:  # Diwali
         first_day_value = 360  # First day value for Diwali calendar
     
@@ -1857,6 +1857,13 @@ def all_transactions_view():
     ]
     filtered_df = filtered_df[cols]
     
+    # Create a dataframe with transaction IDs for deletion
+    display_df = filtered_df.copy()
+    display_df = display_df.reset_index(drop=True)
+    
+    # Get transaction IDs from original dataframe
+    transaction_ids = df.loc[filtered_df.index, "id"].tolist()
+    
     # Summary metrics
     total_transactions = len(filtered_df)
     total_received = filtered_df["received"].sum()
@@ -2095,6 +2102,38 @@ def all_transactions_view():
                 # For Excel export, we'd need to use a BytesIO object
                 # This is a placeholder - in a real app you'd implement Excel export
                 st.info("Excel export functionality will be implemented soon.")
+    
+    # Add a transaction selection and delete functionality
+    st.markdown("### Delete Transactions")
+    st.markdown("Select transactions to delete:")
+    
+    # Create a selection for transactions to delete
+    # Use the display index to select transactions
+    options = [f"{idx+1}. {row['client_name']} - {row['date'].strftime('%Y-%m-%d')} - ₹{row['received'] if row['received'] > 0 else row['paid']:.2f}" 
+               for idx, row in display_df.iterrows()]
+    
+    if options:
+        selected_transactions = st.multiselect("Select transactions to delete:", options=options)
+        
+        if selected_transactions:
+            selected_indices = [int(option.split('.')[0])-1 for option in selected_transactions]
+            selected_ids = [transaction_ids[idx] for idx in selected_indices]
+            
+            if st.button("Delete Selected Transactions", type="primary", use_container_width=True):
+                # Load the most current transactions data
+                current_transactions = load_transactions()
+                
+                # Filter out the selected transactions
+                current_transactions["transactions"] = [
+                    t for t in current_transactions["transactions"] 
+                    if t["id"] not in selected_ids
+                ]
+                
+                # Save the updated transactions
+                save_transactions(current_transactions)
+                
+                st.success(f"Successfully deleted {len(selected_ids)} transaction(s).")
+                st.experimental_rerun()
 
 
 # Function to save interest calendar
