@@ -357,21 +357,14 @@ def client_management(clients_data, transactions_data, interest_calendars=None):
                 # This is outside the inner container but still within the main container for this client
                 if i < len(client_df) - 1:  # Only add separator if this is not the last client
                     st.markdown("""
-                    <div style="padding:2rem 0;">
-                        <div style="width:100%; height:1px; background:linear-gradient(to right, 
-                            rgba(255,255,255,0), 
-                            rgba(255,255,255,0.2), 
-                            rgba(255,255,255,0.5), 
-                            rgba(255,255,255,0.2), 
-                            rgba(255,255,255,0)
-                        );"></div>
-                        <div style="width:100%; height:1px; margin-top:1px; background:linear-gradient(to right, 
-                            rgba(255,255,255,0), 
-                            rgba(255,255,255,0.05), 
-                            rgba(255,255,255,0.1), 
-                            rgba(255,255,255,0.05), 
-                            rgba(255,255,255,0)
-                        );"></div>
+                    <div style="padding:0.75rem 0;">
+                        <div style="width:100%; height:3px; background:linear-gradient(to right, 
+                            rgba(120, 80, 30, 0), 
+                            rgba(120, 80, 30, 0.4), 
+                            rgba(150, 100, 40, 0.7), 
+                            rgba(120, 80, 30, 0.4), 
+                            rgba(120, 80, 30, 0)
+                        ); border-radius:1.5px;"></div>
                     </div>
                     """, unsafe_allow_html=True)
         

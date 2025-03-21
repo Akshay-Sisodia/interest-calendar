@@ -162,12 +162,14 @@ def transactions_section(transactions_data, clients_data, interest_calendars, in
     tab_index = 1  # Default to second tab (All Transactions)
     if st.session_state.active_tab == "add_transaction":
         tab_index = 0  # Set to first tab (Add Transaction)
+    elif st.session_state.active_tab == "edit_transaction":
+        tab_index = 2  # Set to third tab (Edit Transaction)
     
     # Apply enhanced tab styling
     apply_tab_styling()
     
-    # Create tabs for different transaction functions - rearranged order
-    tab1, tab2 = st.tabs(["📋 All Transactions", "✏️ Add Transaction"])
+    # Create tabs for different transaction functions - rearranged order with edit tab
+    tab1, tab2, tab3 = st.tabs(["📋 All Transactions", "✏️ Add Transaction", "🔄 Edit Transaction"])
     
     # Reset the transaction tab selection after this run
     current_tab = st.session_state.active_tab
@@ -179,11 +181,22 @@ def transactions_section(transactions_data, clients_data, interest_calendars, in
             all_transactions_view(transactions_data, clients_data)
         with tab2:
             transaction_management(transactions_data, clients_data, interest_service)
+        with tab3:
+            edit_transaction_view(transactions_data, clients_data, interest_service)
+    elif tab_index == 2:
+        with tab3:
+            edit_transaction_view(transactions_data, clients_data, interest_service)
+        with tab1:
+            all_transactions_view(transactions_data, clients_data)
+        with tab2:
+            transaction_management(transactions_data, clients_data, interest_service)
     else:
         with tab2:
             transaction_management(transactions_data, clients_data, interest_service)
         with tab1:
             all_transactions_view(transactions_data, clients_data)
+        with tab3:
+            edit_transaction_view(transactions_data, clients_data, interest_service)
 
 def transaction_management(transactions_data, clients_data, interest_service):
     """UI component for adding new transactions."""
@@ -200,8 +213,18 @@ def transaction_management(transactions_data, clients_data, interest_service):
         st.warning("⚠️ No clients available. Please add a client first in the Clients section.")
         return
     
+    # Initialize session state for transaction form
+    if 'transaction_amount' not in st.session_state:
+        st.session_state.transaction_amount = 0.0
+    if 'amount_in_words' not in st.session_state:
+        st.session_state.amount_in_words = ""
+    if 'show_confirmation' not in st.session_state:
+        st.session_state.show_confirmation = False
+    if 'transaction_data' not in st.session_state:
+        st.session_state.transaction_data = {}
+    
     # Create the transaction form
-    with st.form("new_transaction_form"):
+    with st.form("new_transaction_form", clear_on_submit=False):
         # Client selection with search
         selected_client = st.selectbox(
             "Select Client", 
@@ -244,7 +267,7 @@ def transaction_management(transactions_data, clients_data, interest_service):
             interest_rate = interest_rate_pct / 100.0
         
         with col2:
-            # Amount input with proper spacing
+            # Amount input without on_change callback (can't use callbacks in forms)
             amount = st.number_input(
                 "Amount (₹)",
                 min_value=0.0,
@@ -254,7 +277,7 @@ def transaction_management(transactions_data, clients_data, interest_service):
                 key="transaction_amount"
             )
             
-            # Display amount in words with better styling
+            # Display amount in words with better styling - this is calculated in real-time
             if amount > 0:
                 amount_in_words = num_to_words_rupees(amount)
                 st.markdown("""
@@ -276,88 +299,327 @@ def transaction_management(transactions_data, clients_data, interest_service):
                 help="Optional notes about this transaction"
             )
         
-        # Submit button
-        submit_button = st.form_submit_button(
-            "Add Transaction", 
-            use_container_width=True,
-            type="primary"
+        # Preview button - this is the only place where we can have a callback
+        preview_button = st.form_submit_button(
+            "Preview Transaction", 
+            use_container_width=True
+        )
+    
+    # If preview button is clicked, show confirmation
+    if preview_button:
+        # Store the current amount in session state to show confirmation
+        if amount > 0:
+            st.session_state.amount_in_words = num_to_words_rupees(amount)
+            st.session_state.show_confirmation = True
+        else:
+            st.error("❌ Amount must be greater than zero.")
+            st.session_state.show_confirmation = False
+            return
+            
+        # Calculate everything for preview
+        date_str = new_date.strftime("%Y-%m-%d")
+        diwali_days, financial_days = interest_service.get_interest_value(date_str)
+        
+        if calendar_type == "Diwali" and diwali_days is None:
+            st.error("❌ No Diwali calendar days value available for the selected date. Transaction not added.")
+            st.session_state.show_confirmation = False
+            return
+        elif calendar_type == "Financial" and financial_days is None:
+            st.error("❌ No Financial calendar days value available for the selected date. Transaction not added.")
+            st.session_state.show_confirmation = False
+            return
+        
+        # Calculate interest
+        transaction_amount = amount if transaction_type == "Received" else -amount
+        
+        if calendar_type == "Diwali":
+            interest = interest_service.calculate_interest(abs(transaction_amount), interest_rate_pct, diwali_days, "Diwali")
+            if transaction_type == "Paid":
+                interest = -interest
+            days_value = diwali_days
+        else:  # Financial
+            interest = interest_service.calculate_interest(abs(transaction_amount), interest_rate_pct, financial_days, "Financial")
+            if transaction_type == "Paid":
+                interest = -interest
+            days_value = financial_days
+        
+        # Find client ID
+        client_id = next(
+            client["id"]
+            for client in clients_data["clients"]
+            if client["name"] == selected_client
         )
         
-        if submit_button:
-            if amount <= 0:
-                st.error("❌ Amount must be greater than zero.")
-                return
+        # Create transaction object for preview
+        transaction_data = {
+            "id": len(transactions_data.get("transactions", [])) + 1,
+            "client_id": client_id,
+            "client_name": selected_client,
+            "date": date_str,
+            "received": float(amount) if transaction_type == "Received" else 0.0,
+            "paid": float(amount) if transaction_type == "Paid" else 0.0,
+            "amount_in_words": num_to_words_rupees(amount),
+            "interest_rate": float(interest_rate_pct),
+            "calendar_type": calendar_type,
+            "days": int(days_value) if days_value is not None else 0,
+            "interest": round(float(interest), 2),
+            "notes": notes,
+        }
+        
+        st.session_state.transaction_data = transaction_data
+        
+        # Display confirmation dialog
+        display_transaction_preview(transaction_data, selected_client, st.session_state.show_confirmation)
+    
+    # Only show confirmation buttons if we're in confirmation mode
+    if st.session_state.show_confirmation:
+        # Confirmation buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Cancel", use_container_width=True):
+                st.session_state.show_confirmation = False
+                st.rerun()
                 
-            date_str = new_date.strftime("%Y-%m-%d")
-            diwali_days, financial_days = interest_service.get_interest_value(date_str)
+        with col2:
+            if st.button("Confirm & Add Transaction", type="primary", use_container_width=True):
+                # Initialize transactions list if needed
+                if "transactions" not in transactions_data:
+                    transactions_data["transactions"] = []
+                
+                # Add and save transaction
+                transactions_data["transactions"].append(st.session_state.transaction_data)
+                save_transactions(transactions_data)
+                
+                # Show success message with details
+                st.success(f"""
+                ✅ Transaction added successfully!
+                
+                **Details:**
+                - Client: {st.session_state.transaction_data['client_name']}
+                - Type: {"Received" if st.session_state.transaction_data['received'] > 0 else "Paid"}
+                - Amount: ₹{max(st.session_state.transaction_data['received'], st.session_state.transaction_data['paid']):,.2f}
+                - Interest: ₹{abs(st.session_state.transaction_data['interest']):,.2f}
+                - Calendar: {st.session_state.transaction_data['calendar_type']} ({st.session_state.transaction_data['days']} days)
+                """)
+                
+                # Clear the confirmation state to allow new transactions
+                st.session_state.show_confirmation = False
+                
+                # Reset amount in session state
+                st.session_state.transaction_amount = 0.0
+                
+                # Set session state to control what happens next
+                st.session_state.transaction_added = True
+                st.session_state.last_action = "add_another"
+                
+                # Refresh the page to clear the form
+                st.rerun()
+
+def edit_transaction_view(transactions_data, clients_data, interest_service):
+    """UI component for editing existing transactions."""
+    if not transactions_data.get("transactions"):
+        st.info("💼 No transactions recorded yet. Add your first transaction in the 'Add Transaction' section.")
+        return
+    
+    st.markdown("""
+    <div style="background-color:#0a0a0a; padding:1rem; border-radius:0.5rem; border-left:4px solid #1a1a1a;">
+        <p style="margin:0; color:#e0e0e0;">Edit an existing transaction by selecting it below.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Create DataFrame with client names for selection
+    df = pd.DataFrame(transactions_data["transactions"])
+    df["date"] = pd.to_datetime(df["date"])
+    
+    # Add client names
+    client_map = {c["id"]: c["name"] for c in clients_data.get("clients", [])}
+    df["client_name"] = df["client_id"].map(client_map)
+    
+    # Sort by date (newest first)
+    df = df.sort_values("date", ascending=False)
+    
+    # Create a selection field that shows relevant transaction info
+    transaction_options = []
+    for i, row in df.iterrows():
+        trans_type = "Received" if row.get("received", 0) > 0 else "Paid"
+        amount = row.get("received", 0) if trans_type == "Received" else row.get("paid", 0)
+        date_str = row["date"].strftime("%d %b %Y")
+        client_name = row.get("client_name", "Unknown")
+        option_text = f"{date_str} - {client_name} - {trans_type} ₹{amount:,.2f}"
+        transaction_options.append({"label": option_text, "value": row.get("id")})
+    
+    # Select transaction to edit
+    selected_transaction_id = st.selectbox(
+        "Select Transaction to Edit",
+        options=[opt["value"] for opt in transaction_options],
+        format_func=lambda x: next((opt["label"] for opt in transaction_options if opt["value"] == x), ""),
+        key="edit_transaction_select"
+    )
+    
+    if selected_transaction_id:
+        # Get the selected transaction
+        selected_transaction = next(
+            (t for t in transactions_data["transactions"] if t.get("id") == selected_transaction_id),
+            None
+        )
+        
+        if not selected_transaction:
+            st.error("Transaction not found!")
+            return
+        
+        # Get the client
+        client = next(
+            (c for c in clients_data["clients"] if c.get("id") == selected_transaction.get("client_id")),
+            None
+        )
+        
+        client_name = client.get("name", "Unknown") if client else "Unknown"
+        
+        # Initialize form values
+        is_received = selected_transaction.get("received", 0) > 0
+        transaction_type = "Received" if is_received else "Paid"
+        amount = selected_transaction.get("received", 0) if is_received else selected_transaction.get("paid", 0)
+        
+        st.markdown("### Edit Transaction")
+        
+        # Create the edit form
+        with st.form("edit_transaction_form"):
+            # Columns for form inputs
+            col1, col2, col3 = st.columns([1.2, 1, 0.8])
             
-            if calendar_type == "Diwali" and diwali_days is None:
-                st.error("❌ No Diwali calendar days value available for the selected date. Transaction not added.")
-                return
-            elif calendar_type == "Financial" and financial_days is None:
-                st.error("❌ No Financial calendar days value available for the selected date. Transaction not added.")
-                return
+            with col1:
+                # Convert the date string to datetime object
+                date_value = datetime.strptime(selected_transaction.get("date", datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d")
+                
+                new_date = st.date_input(
+                    "Transaction Date", 
+                    date_value, 
+                    key="edit_transaction_date"
+                )
+                
+                transaction_type = st.selectbox(
+                    "Transaction Type",
+                    ["Received", "Paid"],
+                    index=0 if is_received else 1,
+                    key="edit_transaction_type"
+                )
+                
+                calendar_type = st.selectbox(
+                    "Calendar Type",
+                    ["Diwali", "Financial"],
+                    index=0 if selected_transaction.get("calendar_type") == "Diwali" else 1,
+                    key="edit_calendar_type"
+                )
+                
+                interest_rate_pct = st.number_input(
+                    "Interest Rate (%)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=float(selected_transaction.get("interest_rate", 5.0)),
+                    step=0.25,
+                    key="edit_interest_rate"
+                )
             
-            # Calculate interest
-            transaction_amount = amount if transaction_type == "Received" else -amount
+            with col2:
+                # Amount input
+                edit_amount = st.number_input(
+                    "Amount (₹)",
+                    min_value=0.0,
+                    value=float(amount),
+                    step=100.0,
+                    format="%.2f",
+                    key="edit_amount"
+                )
+                
+                # Display amount in words
+                if edit_amount > 0:
+                    amount_in_words = num_to_words_rupees(edit_amount)
+                    st.markdown("""
+                    <div style='background-color: rgba(15, 15, 20, 0.7); 
+                                padding: 12px 15px; 
+                                border-radius: 6px; 
+                                border: 1px solid rgba(25, 25, 30, 0.8);
+                                margin: 8px 0;'>
+                        <div style='color: #a0a0a0; font-size: 0.85em; margin-bottom: 4px;">Amount in words</div>
+                        <div style='color: #e0e0e0; font-size: 0.95em; line-height: 1.4;'>{}</div>
+                    </div>
+                    """.format(amount_in_words), unsafe_allow_html=True)
             
-            if calendar_type == "Diwali":
-                interest = interest_service.calculate_interest(abs(transaction_amount), interest_rate_pct, diwali_days, "Diwali")
-                if transaction_type == "Paid":
-                    interest = -interest
-                days_value = diwali_days
-            else:  # Financial
-                interest = interest_service.calculate_interest(abs(transaction_amount), interest_rate_pct, financial_days, "Financial")
-                if transaction_type == "Paid":
-                    interest = -interest
-                days_value = financial_days
+            with col3:
+                notes = st.text_area(
+                    "Notes",
+                    value=selected_transaction.get("notes", ""),
+                    height=205,
+                    key="edit_transaction_notes"
+                )
             
-            # Find client ID
-            client_id = next(
-                client["id"]
-                for client in clients_data["clients"]
-                if client["name"] == selected_client
+            # Submit button
+            update_button = st.form_submit_button(
+                "Update Transaction", 
+                use_container_width=True,
+                type="primary"
             )
             
-            # Create transaction object
-            new_transaction = {
-                "id": len(transactions_data.get("transactions", [])) + 1,
-                "client_id": client_id,
-                "date": date_str,
-                "received": float(amount) if transaction_type == "Received" else 0.0,
-                "paid": float(amount) if transaction_type == "Paid" else 0.0,
-                "amount_in_words": num_to_words_rupees(amount),
-                "interest_rate": float(interest_rate_pct),  # Store as percentage
-                "calendar_type": calendar_type,
-                "days": int(days_value) if days_value is not None else 0,  # Store as integer
-                "interest": round(float(interest), 2),
-                "notes": notes,
-            }
-            
-            # Initialize transactions list if needed
-            if "transactions" not in transactions_data:
-                transactions_data["transactions"] = []
-            
-            # Add and save transaction
-            transactions_data["transactions"].append(new_transaction)
-            save_transactions(transactions_data)
-            
-            # Show success message with details
-            st.success(f"""
-            ✅ Transaction added successfully!
-            
-            **Details:**
-            - Client: {selected_client}
-            - Type: {transaction_type}
-            - Amount: ₹{amount:,.2f}
-            - Amount in Words: {num_to_words_rupees(amount)}
-            - Interest: ₹{interest:,.2f}
-            - Calendar: {calendar_type} ({int(days_value)} days)
-            """)
-            
-            # Set session state to control what happens next
-            st.session_state.transaction_added = True
-            st.session_state.last_action = "add_another"  # Default action
+            if update_button:
+                if edit_amount <= 0:
+                    st.error("❌ Amount must be greater than zero.")
+                    return
+                    
+                # Recalculate interest
+                date_str = new_date.strftime("%Y-%m-%d")
+                diwali_days, financial_days = interest_service.get_interest_value(date_str)
+                
+                if calendar_type == "Diwali" and diwali_days is None:
+                    st.error("❌ No Diwali calendar days value available for the selected date. Transaction not updated.")
+                    return
+                elif calendar_type == "Financial" and financial_days is None:
+                    st.error("❌ No Financial calendar days value available for the selected date. Transaction not updated.")
+                    return
+                
+                # Calculate interest
+                transaction_amount = edit_amount if transaction_type == "Received" else -edit_amount
+                
+                if calendar_type == "Diwali":
+                    interest = interest_service.calculate_interest(abs(transaction_amount), interest_rate_pct, diwali_days, "Diwali")
+                    if transaction_type == "Paid":
+                        interest = -interest
+                    days_value = diwali_days
+                else:  # Financial
+                    interest = interest_service.calculate_interest(abs(transaction_amount), interest_rate_pct, financial_days, "Financial")
+                    if transaction_type == "Paid":
+                        interest = -interest
+                    days_value = financial_days
+                
+                # Update transaction
+                for i, transaction in enumerate(transactions_data["transactions"]):
+                    if transaction.get("id") == selected_transaction_id:
+                        transactions_data["transactions"][i].update({
+                            "date": date_str,
+                            "received": float(edit_amount) if transaction_type == "Received" else 0.0,
+                            "paid": float(edit_amount) if transaction_type == "Paid" else 0.0,
+                            "amount_in_words": num_to_words_rupees(edit_amount),
+                            "interest_rate": float(interest_rate_pct),
+                            "calendar_type": calendar_type,
+                            "days": int(days_value) if days_value is not None else 0,
+                            "interest": round(float(interest), 2),
+                            "notes": notes,
+                        })
+                        break
+                
+                # Save changes
+                save_transactions(transactions_data)
+                
+                # Show success message
+                st.success(f"""
+                ✅ Transaction updated successfully!
+                
+                **Updated Details:**
+                - Client: {client_name}
+                - Type: {transaction_type}
+                - Amount: ₹{edit_amount:,.2f}
+                - Interest: ₹{abs(interest):,.2f}
+                - Calendar: {calendar_type} ({int(days_value)} days)
+                """)
 
 def all_transactions_view(transactions_data, clients_data):
     """UI component for viewing all transactions."""
@@ -723,3 +985,304 @@ def all_transactions_view(transactions_data, clients_data):
         hide_index=True,
         use_container_width=True
     )
+
+def display_transaction_preview(transaction, client_name, confirmation=False):
+    """Display a transaction preview with styled HTML."""
+    # Title for the preview
+    st.markdown(
+        "### Transaction Preview" if not confirmation else "### Confirm Transaction Details",
+        unsafe_allow_html=True
+    )
+    
+    # Create the styled HTML preview
+    html_preview = f"""
+    <div style="background-color:#121212; padding:1.5rem; border-radius:0.5rem; margin-bottom:1rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Client</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{client_name}</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Date</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction['date']}</p>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Transaction Type</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{"Received" if transaction.get('received', 0) > 0 else "Paid"}</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Amount</p>
+                <p style="color: {"#4ade80" if transaction.get('received', 0) > 0 else "#f87171"}; font-weight: 500; margin-top: 0;">₹{transaction.get('received', 0) if transaction.get('received', 0) > 0 else transaction.get('paid', 0):,.2f}</p>
+            </div>
+        </div>
+        
+        {f'''
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Interest Rate</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('interest_rate', 0)}%</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Calendar</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('calendar_type', 'N/A')}</p>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Days</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('days', 'N/A')}</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Interest</p>
+                <p style="color: #4b6bfb; font-weight: 500; margin-top: 0;">₹{transaction.get('interest', 0):,.2f}</p>
+            </div>
+        </div>
+        ''' if transaction.get('interest') is not None else ''}
+        
+        {f'''
+        <div style="margin-top: 10px;">
+            <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Notes</p>
+            <p style="color: #e0e0e0; margin-top: 0;">{transaction.get('notes', 'No notes')}</p>
+        </div>
+        ''' if transaction.get('notes') else ''}
+        
+        {f'''
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a2a;">
+            <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Amount in Words</p>
+            <p style="color: #e0e0e0; margin-top: 0; font-style: italic;">{transaction.get('amount_in_words', '')}</p>
+        </div>
+        ''' if transaction.get('amount_in_words') else ''}
+    </div>
+    """
+    
+    # Render the HTML with unsafe_allow_html=True
+    st.markdown(html_preview, unsafe_allow_html=True)
+
+def confirm_transaction_screen(client_name, transaction_data, back_callback=None):
+    """Display the transaction confirmation screen."""
+    colored_header(
+        label="Confirm Transaction Details",
+        description="Review and confirm transaction information",
+        color_name="gray-40"
+    )
+    
+    # Display transaction preview
+    display_transaction_preview(transaction_data, client_name, confirmation=True)
+    
+    # Add a confirmation message with warning styling
+    st.markdown("""
+    <div style="background-color:#121212; padding:1rem; border-radius:0.5rem; border-left:4px solid #f59e0b; margin-bottom:1rem;">
+        <p style="margin:0; color:#e0e0e0; font-weight:500;">⚠️ Please review the transaction details carefully before confirming.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Create buttons for back and confirm
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if back_callback:
+            if st.button("Back", use_container_width=True):
+                back_callback()
+                
+    with col2:
+        confirm_button = st.button("Confirm Transaction", type="primary", use_container_width=True)
+        
+    return confirm_button
+
+def transaction_receipt(transaction, client_name):
+    """Display a transaction receipt that can be printed or saved."""
+    colored_header(
+        label="Transaction Receipt",
+        description="Transaction has been successfully recorded",
+        color_name="green-70"
+    )
+    
+    # Success message
+    st.markdown("""
+    <div style="background-color:#052e16; padding:1rem; border-radius:0.5rem; border-left:4px solid #10b981; margin-bottom:1.5rem;">
+        <p style="margin:0; color:#d1fae5; font-weight:500;">✅ Transaction has been successfully recorded.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Print receipt button
+    if st.button("Print Receipt", use_container_width=True):
+        # JavaScript to trigger printing
+        js_print = """
+        <script>
+            window.print();
+        </script>
+        """
+        st.markdown(js_print, unsafe_allow_html=True)
+    
+    # Display formatted receipt
+    receipt_html = f"""
+    <div style="background-color:#f8fafc; color:#1e293b; padding:2rem; border-radius:0.5rem; margin:1.5rem 0; max-width:800px; font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+        <div style="text-align:center; margin-bottom:2rem;">
+            <h2 style="color:#0f172a; margin-bottom:0.5rem;">Transaction Receipt</h2>
+            <p style="color:#64748b; margin:0;">{datetime.now().strftime('%d %b %Y, %I:%M %p')}</p>
+        </div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Client</p>
+                <p style="color:#0f172a; font-weight:600; margin-top:0; font-size:1.125rem;">{client_name}</p>
+            </div>
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Date</p>
+                <p style="color:#0f172a; font-weight:600; margin-top:0; font-size:1.125rem;">{transaction['date']}</p>
+            </div>
+        </div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Transaction Type</p>
+                <p style="color:#0f172a; font-weight:600; margin-top:0; font-size:1.125rem;">
+                    {"Received" if transaction.get('received', 0) > 0 else "Paid"}
+                </p>
+            </div>
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Amount</p>
+                <p style="color:{'#047857' if transaction.get('received', 0) > 0 else '#b91c1c'}; font-weight:600; margin-top:0; font-size:1.125rem;">
+                    ₹{transaction.get('received', 0) if transaction.get('received', 0) > 0 else transaction.get('paid', 0):,.2f}
+                </p>
+            </div>
+        </div>
+        
+        {f'''
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Interest Rate</p>
+                <p style="color:#0f172a; font-weight:600; margin-top:0; font-size:1.125rem;">{transaction.get('interest_rate', 0)}%</p>
+            </div>
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Calendar</p>
+                <p style="color:#0f172a; font-weight:600; margin-top:0; font-size:1.125rem;">{transaction.get('calendar_type', 'N/A')}</p>
+            </div>
+        </div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Days</p>
+                <p style="color:#0f172a; font-weight:600; margin-top:0; font-size:1.125rem;">{transaction.get('days', 'N/A')}</p>
+            </div>
+            <div>
+                <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Interest</p>
+                <p style="color:#2563eb; font-weight:600; margin-top:0; font-size:1.125rem;">₹{transaction.get('interest', 0):,.2f}</p>
+            </div>
+        </div>
+        ''' if transaction.get('interest') is not None else ''}
+        
+        {f'''
+        <div style="margin-bottom:1.5rem;">
+            <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Notes</p>
+            <p style="color:#0f172a; margin-top:0;">{transaction.get('notes', 'No notes')}</p>
+        </div>
+        ''' if transaction.get('notes') else ''}
+        
+        {f'''
+        <div style="margin-top:1.5rem; padding-top:1.5rem; border-top:1px solid #e2e8f0;">
+            <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Amount in Words</p>
+            <p style="color:#0f172a; margin-top:0; font-style:italic;">{transaction.get('amount_in_words', '')}</p>
+        </div>
+        ''' if transaction.get('amount_in_words') else ''}
+        
+        <div style="text-align:center; margin-top:3rem; padding-top:1.5rem; border-top:1px dashed #e2e8f0;">
+            <p style="color:#64748b; margin:0; font-size:0.875rem;">This is a system-generated receipt.</p>
+        </div>
+    </div>
+    """
+    
+    st.markdown(receipt_html, unsafe_allow_html=True)
+    
+    # Add buttons for navigation
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Back to Transactions", use_container_width=True):
+            st.session_state.page = "transactions"
+            st.session_state.receipt_view = False
+            st.session_state.nav_changed = True
+            
+    with col2:
+        if st.button("Add Another Transaction", type="primary", use_container_width=True):
+            st.session_state.page = "transactions"
+            st.session_state.receipt_view = False
+            st.session_state.add_transaction_mode = True
+            st.session_state.nav_changed = True
+
+def display_transaction_details(transaction, client_name):
+    """Display detailed information about a transaction."""
+    # Create a styled container for the transaction details
+    transaction_html = f"""
+    <div style="background-color:#121212; padding:1.5rem; border-radius:0.8rem; margin-bottom:1.5rem; box-shadow:0 4px 8px rgba(0,0,0,0.2); position:relative;">
+        <div style="position:absolute; inset:0; border-radius:0.8rem; padding:1.5px; background:linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.95), rgba(255,255,255,0.1)); -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none;"></div>
+        
+        <h2 style="color:#e0e0e0; margin-top:0;">Transaction Details</h2>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Client</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{client_name}</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Date</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction['date']}</p>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Transaction Type</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{"Received" if transaction.get('received', 0) > 0 else "Paid"}</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Amount</p>
+                <p style="color: {"#4ade80" if transaction.get('received', 0) > 0 else "#f87171"}; font-weight: 500; margin-top: 0;">₹{transaction.get('received', 0) if transaction.get('received', 0) > 0 else transaction.get('paid', 0):,.2f}</p>
+            </div>
+        </div>
+        
+        {f'''
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Interest Rate</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('interest_rate', 0)}%</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Calendar</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('calendar_type', 'N/A')}</p>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Days</p>
+                <p style="color: #e0e0e0; font-weight: 500; margin-top: 0;">{transaction.get('days', 'N/A')}</p>
+            </div>
+            <div>
+                <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Interest</p>
+                <p style="color: #4b6bfb; font-weight: 500; margin-top: 0;">₹{transaction.get('interest', 0):,.2f}</p>
+            </div>
+        </div>
+        ''' if transaction.get('interest') is not None else ''}
+        
+        {f'''
+        <div style="margin-top: 10px;">
+            <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Notes</p>
+            <p style="color: #e0e0e0; margin-top: 0;">{transaction.get('notes', 'No notes')}</p>
+        </div>
+        ''' if transaction.get('notes') else ''}
+        
+        {f'''
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2a2a;">
+            <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Amount in Words</p>
+            <p style="color: #e0e0e0; margin-top: 0; font-style: italic;">{transaction.get('amount_in_words', '')}</p>
+        </div>
+        ''' if transaction.get('amount_in_words') else ''}
+    </div>
+    """
+    
+    st.markdown(transaction_html, unsafe_allow_html=True)

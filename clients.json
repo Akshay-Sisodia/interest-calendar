@@ -2,66 +2,18 @@
     "clients": [
         {
             "id": 1,
-            "name": "Test Client 1",
+            "name": "Client 1",
             "contact": "",
             "email": "",
             "notes": "",
-            "created_at": "2025-03-11 13:04:05",
-            "opening_balance": 100.0,
+            "created_at": "2025-03-21 16:52:55",
+            "opening_balance": 700000.0,
             "opening_balance_details": {
-                "date": "2025-03-11",
-                "interest_rate": 5.0,
-                "calendar_type": "Diwali",
-                "days": 228,
-                "interest": 3.17
-            }
-        },
-        {
-            "id": 2,
-            "name": "Test Client 2 ",
-            "contact": "",
-            "email": "",
-            "notes": "",
-            "created_at": "2025-03-11 15:24:12",
-            "opening_balance": 2323.0,
-            "opening_balance_details": {
-                "date": "2025-03-11",
-                "interest_rate": 5.0,
+                "date": "2024-04-01",
+                "interest_rate": 12.0,
                 "calendar_type": "Financial",
-                "days": 21,
-                "interest": 6.66
-            }
-        },
-        {
-            "id": 3,
-            "name": "Test Client 3 ",
-            "contact": "",
-            "email": "",
-            "notes": "",
-            "created_at": "2025-03-11 16:04:19",
-            "opening_balance": 0.0,
-            "opening_balance_details": {
-                "date": "2025-03-11",
-                "interest_rate": 5.0,
-                "calendar_type": "Diwali",
-                "days": 0,
-                "interest": 0
-            }
-        },
-        {
-            "id": 4,
-            "name": "Test Client 4",
-            "contact": "",
-            "email": "",
-            "notes": "",
-            "created_at": "2025-03-11 16:22:31",
-            "opening_balance": 1000.0,
-            "opening_balance_details": {
-                "date": "2025-03-12",
-                "interest_rate": 5.0,
-                "calendar_type": "Financial",
-                "days": 20,
-                "interest": 2.73
+                "days": 365,
+                "interest": 83770.49
             }
         }
     ]
