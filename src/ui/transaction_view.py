@@ -10,7 +10,7 @@ from ..models.transaction import Transaction
 from ..models.client import Client
 from ..services.interest_service import InterestService
 from ..data.data_loader import save_transactions
-from ..utils.helpers import sanitize_html, num_to_words_rupees, render_html_safely  # Import the new function
+from ..utils.helpers import sanitize_html, num_to_words_rupees  # Removed render_html_safely
 
 def apply_tab_styling():
     """Apply enhanced tab styling to Streamlit tabs."""
@@ -220,6 +220,14 @@ def transaction_management(transactions_data, clients_data, interest_service):
     if 'reset_transaction_form' not in st.session_state:
         st.session_state.reset_transaction_form = False
     
+    # Initialize confirmation state
+    if 'show_transaction_confirmation' not in st.session_state:
+        st.session_state.show_transaction_confirmation = False
+    
+    # Initialize transaction data state
+    if 'pending_transaction_data' not in st.session_state:
+        st.session_state.pending_transaction_data = {}
+    
     # If reset flag is set, clear all form-related session state values
     if st.session_state.reset_transaction_form:
         if 'transaction_client_select' in st.session_state:
@@ -228,15 +236,64 @@ def transaction_management(transactions_data, clients_data, interest_service):
             del st.session_state.new_transaction_date
         if 'new_transaction_notes' in st.session_state:
             del st.session_state.new_transaction_notes
+        st.session_state.show_transaction_confirmation = False
         
         # Reset the flag
         st.session_state.reset_transaction_form = False
     
-    # Initialize other session state variables (removing show_confirmation since we skip preview)
+    # Initialize other session state variables
     if 'amount_in_words' not in st.session_state:
         st.session_state.amount_in_words = ""
     if 'transaction_data' not in st.session_state:
         st.session_state.transaction_data = {}
+    
+    # Show confirmation screen if needed
+    if st.session_state.show_transaction_confirmation:
+        client_name = st.session_state.pending_transaction_data.get("client_name", "")
+        
+        # Define back callback function
+        def back_to_form():
+            st.session_state.show_transaction_confirmation = False
+        
+        # Show confirmation screen and get result
+        confirm_button = confirm_transaction_screen(
+            client_name, 
+            st.session_state.pending_transaction_data, 
+            back_callback=back_to_form
+        )
+        
+        # If confirmed, add the transaction
+        if confirm_button:
+            # Add and save transaction
+            if "transactions" not in transactions_data:
+                transactions_data["transactions"] = []
+            
+            transactions_data["transactions"].append(st.session_state.pending_transaction_data)
+            save_transactions(transactions_data)
+            
+            # Show success message with details
+            st.success(f"""
+            ✅ Transaction added successfully!
+            
+            **Details:**
+            - Client: {client_name}
+            - Type: {"Received" if st.session_state.pending_transaction_data.get('received', 0) > 0 else "Paid"}
+            - Amount: ₹{(st.session_state.pending_transaction_data.get('received', 0) or st.session_state.pending_transaction_data.get('paid', 0)):,.2f}
+            - Interest: ₹{abs(st.session_state.pending_transaction_data.get('interest', 0)):,.2f}
+            - Calendar: {st.session_state.pending_transaction_data.get('calendar_type')} ({st.session_state.pending_transaction_data.get('days')} days)
+            """)
+            
+            # Reset form for next transaction
+            st.session_state.reset_transaction_form = True
+            
+            # Set session state to control what happens next
+            st.session_state.transaction_added = True
+            st.session_state.last_action = "add_another"
+            
+            # Refresh the page to clear the form
+            st.rerun()
+        
+        return
     
     # Create the transaction form
     with st.form("new_transaction_form", clear_on_submit=False):
@@ -292,7 +349,7 @@ def transaction_management(transactions_data, clients_data, interest_service):
                 key="transaction_amount"
             )
             
-            # Display amount in words with better styling - this is calculated in real-time
+            # Display amount in words in real-time
             if amount > 0:
                 amount_in_words = num_to_words_rupees(amount)
                 st.markdown("""
@@ -314,14 +371,14 @@ def transaction_management(transactions_data, clients_data, interest_service):
                 help="Optional notes about this transaction"
             )
         
-        # Submit button - renamed from Preview to Add
+        # Submit button - renamed to Review Transaction
         submit_button = st.form_submit_button(
-            "Add Transaction", 
+            "Review Transaction", 
             use_container_width=True,
             type="primary"
         )
     
-    # If submit button is clicked, add the transaction directly
+    # If submit button is clicked, show confirmation
     if submit_button:
         # Validate amount
         if amount <= 0:
@@ -376,34 +433,13 @@ def transaction_management(transactions_data, clients_data, interest_service):
             "notes": notes,
         }
         
-        # Initialize transactions list if needed
-        if "transactions" not in transactions_data:
-            transactions_data["transactions"] = []
+        # Store the transaction data in session state for confirmation
+        st.session_state.pending_transaction_data = transaction_data
         
-        # Add and save transaction
-        transactions_data["transactions"].append(transaction_data)
-        save_transactions(transactions_data)
+        # Show confirmation screen
+        st.session_state.show_transaction_confirmation = True
         
-        # Show success message with details
-        st.success(f"""
-        ✅ Transaction added successfully!
-        
-        **Details:**
-        - Client: {selected_client}
-        - Type: {transaction_type}
-        - Amount: ₹{amount:,.2f}
-        - Interest: ₹{abs(interest):,.2f}
-        - Calendar: {calendar_type} ({int(days_value)} days)
-        """)
-        
-        # Reset form for next transaction
-        st.session_state.reset_transaction_form = True
-        
-        # Set session state to control what happens next
-        st.session_state.transaction_added = True
-        st.session_state.last_action = "add_another"
-        
-        # Refresh the page to clear the form
+        # Refresh the page to show confirmation
         st.rerun()
 
 def edit_transaction_view(transactions_data, clients_data, interest_service):
@@ -611,6 +647,51 @@ def edit_transaction_view(transactions_data, clients_data, interest_service):
                 - Interest: ₹{abs(interest):,.2f}
                 - Calendar: {calendar_type} ({int(days_value)} days)
                 """)
+                
+        # Add a separate form for deletion to avoid conflicts with the edit form
+        st.markdown("<hr style='margin: 2rem 0; border-color: #333;'>", unsafe_allow_html=True)
+        st.markdown("### Delete Transaction")
+        
+        # Warning about deletion
+        st.warning("⚠️ **Warning:** Deleting a transaction cannot be undone. This action is permanent.")
+        
+        # Add deletion form
+        with st.form("delete_transaction_form"):
+            # Confirmation checkbox
+            delete_confirm = st.checkbox(
+                "I understand that this action cannot be undone",
+                key="delete_transaction_confirm"
+            )
+            
+            # Delete button
+            delete_button = st.form_submit_button(
+                "Delete Transaction", 
+                use_container_width=True, 
+                type="primary", 
+                help="Permanently delete this transaction"
+            )
+            
+            if delete_button:
+                if not delete_confirm:
+                    st.error("❌ Please confirm that you understand this action cannot be undone.")
+                    return
+                
+                # Delete the transaction
+                transactions_data["transactions"] = [t for t in transactions_data["transactions"] if t.get("id") != selected_transaction_id]
+                
+                # Save changes
+                save_transactions(transactions_data)
+                
+                # Show success message
+                st.success(f"""
+                ✅ Transaction deleted successfully!
+                
+                The transaction for {client_name} on {date_value.strftime("%d %b %Y")} has been permanently removed.
+                """)
+                
+                # Clear the form and reset the view after a short delay
+                st.session_state.reset_transaction_form = True
+                st.rerun()
 
 def all_transactions_view(transactions_data, clients_data):
     """UI component for viewing all transactions."""
@@ -1024,7 +1105,15 @@ def confirm_transaction_screen(client_name, transaction_data, back_callback=None
         <p style="margin:0; color:#e0e0e0; font-weight:500;">⚠️ Please review the transaction details carefully before confirming.</p>
     </div>
     """
-    st.markdown(render_html_safely(warning_html), unsafe_allow_html=True)
+    
+    # Try to use the render_html_safely function if available
+    try:
+        from src.utils.helpers import render_html_safely
+        warning_html = render_html_safely(warning_html)
+        st.components.v1.html(warning_html, height=80, scrolling=False)
+    except ImportError:
+        # Fall back to standard markdown
+        st.markdown(warning_html, unsafe_allow_html=True)
     
     # Create buttons for back and confirm
     col1, col2 = st.columns(2)
@@ -1053,7 +1142,7 @@ def transaction_receipt(transaction, client_name):
         <p style="margin:0; color:#d1fae5; font-weight:500;">✅ Transaction has been successfully recorded.</p>
     </div>
     """
-    st.markdown(render_html_safely(success_html), unsafe_allow_html=True)
+    st.markdown(success_html, unsafe_allow_html=True)
     
     # Print receipt button
     if st.button("Print Receipt", use_container_width=True):
@@ -1126,7 +1215,7 @@ def transaction_receipt(transaction, client_name):
         {f'''
         <div style="margin-bottom:1.5rem;">
             <p style="color:#64748b; margin-bottom:0.25rem; font-size:0.875rem;">Notes</p>
-            <p style="color:#0f172a; margin-top:0;">{transaction.get('notes', 'No notes')}</p>
+            <p style="color:#0f172a; margin-top:0;">{sanitize_html(transaction.get('notes', 'No notes'))}</p>
         </div>
         ''' if transaction.get('notes') else ''}
         
@@ -1143,7 +1232,7 @@ def transaction_receipt(transaction, client_name):
     </div>
     """
     
-    st.markdown(render_html_safely(receipt_html), unsafe_allow_html=True)
+    st.markdown(receipt_html, unsafe_allow_html=True)
     
     # Add buttons for navigation
     col1, col2 = st.columns(2)
@@ -1163,7 +1252,7 @@ def transaction_receipt(transaction, client_name):
 
 def display_transaction_details(transaction, client_name):
     """Display detailed information about a transaction."""
-    # Create a styled container for the transaction details
+    # Create a styled container for the transaction details with additional background styling
     transaction_html = f"""
     <div style="background-color:#121212; padding:1.5rem; border-radius:0.8rem; margin-bottom:1.5rem; box-shadow:0 4px 8px rgba(0,0,0,0.2); position:relative;">
         <div style="position:absolute; inset:0; border-radius:0.8rem; padding:1.5px; background:linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.95), rgba(255,255,255,0.1)); -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none;"></div>
@@ -1219,7 +1308,7 @@ def display_transaction_details(transaction, client_name):
         {f'''
         <div style="margin-top: 10px;">
             <p style="color: #a0a0a0; margin-bottom: 5px; font-size: 0.9rem;">Notes</p>
-            <p style="color: #e0e0e0; margin-top: 0;">{transaction.get('notes', 'No notes')}</p>
+            <p style="color: #e0e0e0; margin-top: 0;">{sanitize_html(transaction.get('notes', 'No notes'))}</p>
         </div>
         ''' if transaction.get('notes') else ''}
         
@@ -1232,4 +1321,40 @@ def display_transaction_details(transaction, client_name):
     </div>
     """
     
-    st.markdown(render_html_safely(transaction_html), unsafe_allow_html=True)
+    # Try to import the render_html_safely function from helpers
+    try:
+        from src.utils.helpers import render_html_safely
+        # Use the safer render function if available
+        transaction_html = render_html_safely(transaction_html)
+    except ImportError:
+        # If function not available, clean up HTML directly
+        import re
+        # Remove excess whitespace and newlines between tags to improve rendering
+        transaction_html = re.sub(r'>\s+<', '><', transaction_html.strip())
+    
+    # Add table styling separately
+    st.markdown("""
+    <style>
+    /* Table styling */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 1.2rem !important;
+    }
+    
+    th, td {
+        padding: 12px 16px;
+        text-align: left;
+        font-size: 1.2rem !important;
+        line-height: 1.4;
+    }
+    
+    th {
+        font-weight: 600;
+        background-color: #121212;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Use an alternative approach by embedding in HTML components
+    st.components.v1.html(transaction_html, height=550, scrolling=False)

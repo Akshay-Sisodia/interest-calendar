@@ -121,7 +121,7 @@
             "amount_in_words": "Two Lakh Twenty Five Thousand Rupees Only",
             "interest_rate": 12.0,
             "calendar_type": "Financial",
-            "days": 159,
+            "days": 159.0,
             "interest": 11761.64,
             "notes": ""
         },
