@@ -1,0 +1,21 @@
+{
+    "clients": [
+        {
+            "id": 1,
+            "name": "test",
+            "contact": "",
+            "email": "",
+            "notes": "",
+            "created_at": "2025-03-27 14:22:34",
+            "opening_balance": 0.0
+        },
+        {
+            "id": 2,
+            "name": "Clietn 2",
+            "contact": "",
+            "email": "",
+            "notes": "",
+            "created_at": "2025-03-27 16:20:21"
+        }
+    ]
+}
